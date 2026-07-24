@@ -4,6 +4,7 @@ import { MdSave, MdUploadFile } from "react-icons/md";
 import API from "../api/axios.js";
 import { fileToBase64 } from "../utils/fileToBase64.js";
 import DateInput from "../components/DateInput.jsx";
+import { FaArrowLeft } from "react-icons/fa";
 
 const emptyForm = {
   fullName: "",
@@ -119,6 +120,16 @@ const TenantForm = () => {
 
   return (
     <div className="max-w-3xl">
+      {/* Back Button */}
+      <div className="mb-4">
+        <button
+          onClick={() => navigate("/tenants")}
+          className="flex items-center gap-1 cursor-pointer text-brand-600 hover:text-brand-700 text-sm"
+        >
+          <FaArrowLeft /> Back to Rent Members
+        </button>
+      </div>
+
       <h2 className="text-xl font-bold text-gray-800 mb-6">
         {isEdit ? "Edit Rent Member" : "Add Rent Member"}
       </h2>

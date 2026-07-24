@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import {
   MdAdd, MdEdit, MdDelete, MdMeetingRoom, MdPerson,
   MdReceiptLong, MdCheckCircle, MdAttachFile,
@@ -8,6 +8,7 @@ import API from "../api/axios.js";
 import Modal from "../components/Modal.jsx";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import BillFormModal from "../components/BillFormModal.jsx";
+import { FaArrowLeft } from "react-icons/fa";
 
 const emptyRoom = { roomNumber: "", capacity: 1, notes: "" };
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString("en-GB") : "-"); // dd/mm/yyyy
@@ -23,6 +24,7 @@ const PropertyDetail = () => {
   const [deleteRoomId, setDeleteRoomId] = useState(null);
   const [showBillModal, setShowBillModal] = useState(false);
   const [deleteBillId, setDeleteBillId] = useState(null);
+  const navigate = useNavigate();
 
   const fetchData = async () => {
     const { data } = await API.get(`/properties/${id}`);
@@ -84,6 +86,16 @@ const PropertyDetail = () => {
 
   return (
     <div>
+{/* Back Button */}
+      <div className="mb-4">
+        <button
+          onClick={() => navigate("/properties")}
+          className="flex items-center gap-1 cursor-pointer text-brand-600 hover:text-brand-700 text-sm"
+        >
+          <FaArrowLeft /> Back to Properties
+        </button>
+      </div>
+
       <div className="mb-6">
         <h2 className="text-xl font-bold text-gray-800">{property.name}</h2>
         <p className="text-sm text-gray-500">{property.address}{property.county ? `, ${property.county}` : ""} {property.eircode}</p>
