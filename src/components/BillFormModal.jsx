@@ -5,36 +5,39 @@ import { fileToBase64 } from "../utils/fileToBase64.js";
 import Modal from "./Modal.jsx";
 import DateInput from "./DateInput.jsx";
 
-const daysInMonth = (year, month) => new Date(year, month, 0).getDate(); // month: 1-12
+const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
-// Days a tenant was actually present during the given "YYYY-MM" billing month
-const daysPresentInMonth = (moveInDate, periodMonth) => {
-  const [y, m] = periodMonth.split("-").map(Number);
-  const totalDays = daysInMonth(y, m);
-  const monthStart = new Date(y, m - 1, 1);
-  const monthEnd = new Date(y, m - 1, totalDays);
-  const moveIn = new Date(moveInDate);
+// How many days a tenant was actually present between periodStart and periodEnd
+// (accounts for moving in mid-period and moving out mid-period)
+const daysPresentInPeriod = (t, periodStart, periodEnd) => {
+  if (!periodStart || !periodEnd) return 0;
+  const pStart = new Date(periodStart);
+  const pEnd = new Date(periodEnd);
+  const moveIn = new Date(t.moveInDate);
+  const moveOut = t.moveOutDate ? new Date(t.moveOutDate) : null;
 
-  if (moveIn > monthEnd) return { present: 0, totalDays };
-  const effectiveStart = moveIn > monthStart ? moveIn : monthStart;
-  const present = Math.round((monthEnd - effectiveStart) / (1000 * 60 * 60 * 24)) + 1;
-  return { present: Math.max(present, 0), totalDays };
+  const effectiveStart = moveIn > pStart ? moveIn : pStart;
+  const effectiveEnd = moveOut && moveOut < pEnd ? moveOut : pEnd;
+
+  if (effectiveStart > effectiveEnd) return 0;
+  return Math.round((effectiveEnd - effectiveStart) / MS_PER_DAY) + 1;
 };
 
-const getCurrentMonth = () => {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+const totalDaysInPeriod = (periodStart, periodEnd) => {
+  if (!periodStart || !periodEnd) return 0;
+  const days = Math.round((new Date(periodEnd) - new Date(periodStart)) / MS_PER_DAY) + 1;
+  return Math.max(days, 0);
 };
 
-const BillFormModal = ({ tenant, onClose, onSaved }) => {
-  const propertyId = tenant.property?._id || tenant.property;
-
+// propertyId: required. defaultTenantId: optional, preselects + auto-picks that tenant's property.
+const BillFormModal = ({ propertyId, defaultTenantId, onClose, onSaved }) => {
   const [propertyTenants, setPropertyTenants] = useState([]);
-  const [selectedTenants, setSelectedTenants] = useState([tenant._id]);
-  const [prorate, setProrate] = useState(true);
+  const [selectedTenants, setSelectedTenants] = useState(defaultTenantId ? [defaultTenantId] : []);
+  const [splitMethod, setSplitMethod] = useState("equal"); // "equal" | "prorate"
 
   const [billType, setBillType] = useState("Electricity");
-  const [billPeriodMonth, setBillPeriodMonth] = useState(getCurrentMonth());
+  const [billPeriodStart, setBillPeriodStart] = useState("");
+  const [billPeriodEnd, setBillPeriodEnd] = useState("");
   const [totalAmount, setTotalAmount] = useState("");
   const [billDate, setBillDate] = useState("");
   const [dueDate, setDueDate] = useState("");
@@ -43,7 +46,8 @@ const BillFormModal = ({ tenant, onClose, onSaved }) => {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    API.get("/tenants", { params: { property: propertyId, status: "active" } }).then((res) =>
+    if (!propertyId) return;
+    API.get("/tenants", { params: { property: propertyId } }).then((res) =>
       setPropertyTenants(res.data)
     );
   }, [propertyId]);
@@ -54,20 +58,34 @@ const BillFormModal = ({ tenant, onClose, onSaved }) => {
     );
   };
 
+  const periodDays = totalDaysInPeriod(billPeriodStart, billPeriodEnd);
+
   // Live preview of each selected tenant's share
   const computeShares = () => {
     const amount = Number(totalAmount) || 0;
-    const n = selectedTenants.length || 1;
-    const equalShare = Math.round((amount / n) * 100) / 100;
+    const tenantsList = selectedTenants.map(
+      (tid) => propertyTenants.find((pt) => pt._id === tid)
+    ).filter(Boolean);
 
-    return selectedTenants.map((tid) => {
-      const t = propertyTenants.find((pt) => pt._id === tid) || tenant;
-      if (!prorate) return { tenant: t, shareAmount: equalShare };
+    if (splitMethod === "equal") {
+      const n = tenantsList.length || 1;
+      const equalShare = Math.round((amount / n) * 100) / 100;
+      return tenantsList.map((t) => ({ tenant: t, shareAmount: equalShare }));
+    }
 
-      const { present, totalDays } = daysPresentInMonth(t.moveInDate, billPeriodMonth);
-      const shareAmount = Math.round((equalShare * (present / totalDays)) * 100) / 100;
-      return { tenant: t, shareAmount, present, totalDays };
-    });
+    // Prorate by days present in the billing period — full amount split
+    // proportionally so shares always add up to the total bill.
+    const withDays = tenantsList.map((t) => ({
+      tenant: t,
+      days: daysPresentInPeriod(t, billPeriodStart, billPeriodEnd),
+    }));
+    const totalPresentDays = withDays.reduce((sum, x) => sum + x.days, 0) || 1;
+
+    return withDays.map((x) => ({
+      tenant: x.tenant,
+      shareAmount: Math.round((amount * (x.days / totalPresentDays)) * 100) / 100,
+      days: x.days,
+    }));
   };
 
   const shares = computeShares();
@@ -79,16 +97,26 @@ const BillFormModal = ({ tenant, onClose, onSaved }) => {
       setError("Kam az kam ek member select karein");
       return;
     }
+    if (splitMethod === "prorate" && (!billPeriodStart || !billPeriodEnd)) {
+      setError("Prorate by days ke liye Billing Period Start aur End dono dein");
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
         property: propertyId,
         billType,
-        billPeriodMonth,
+        billPeriodStart: billPeriodStart || undefined,
+        billPeriodEnd: billPeriodEnd || undefined,
+        splitMethod,
         totalAmount: Number(totalAmount),
         billDate,
         dueDate: dueDate || undefined,
-        tenants: shares.map((s) => ({ tenant: s.tenant._id, shareAmount: s.shareAmount })),
+        tenants: shares.map((s) => ({
+          tenant: s.tenant._id,
+          shareAmount: s.shareAmount,
+          daysPresent: s.days,
+        })),
       };
 
       if (file) {
@@ -132,11 +160,20 @@ const BillFormModal = ({ tenant, onClose, onSaved }) => {
             <DateInput value={dueDate} onChange={setDueDate} />
           </div>
         </div>
-        <div>
-          <label className="text-xs text-gray-500">Billing Month (for proration)</label>
-          <input type="month" value={billPeriodMonth} onChange={(e) => setBillPeriodMonth(e.target.value)}
-            className="border border-sand-200 rounded-lg px-3 py-2 text-sm w-full" />
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs text-gray-500">Billing Period Start</label>
+            <DateInput value={billPeriodStart} onChange={setBillPeriodStart} />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">Billing Period End</label>
+            <DateInput value={billPeriodEnd} onChange={setBillPeriodEnd} />
+          </div>
         </div>
+        {billPeriodStart && billPeriodEnd && (
+          <p className="text-xs text-gray-400 -mt-2">Period length: {periodDays} day(s) — can span more than one month</p>
+        )}
 
         <div>
           <p className="text-xs text-gray-500 mb-2">Split between which members?</p>
@@ -151,14 +188,25 @@ const BillFormModal = ({ tenant, onClose, onSaved }) => {
                 {t.fullName}
               </button>
             ))}
+            {propertyTenants.length === 0 && (
+              <p className="text-sm text-gray-400">No rent members found for this property.</p>
+            )}
           </div>
         </div>
 
         {selectedTenants.length > 1 && (
-          <label className="flex items-center gap-2 text-sm text-gray-600">
-            <input type="checkbox" checked={prorate} onChange={(e) => setProrate(e.target.checked)} />
-            Proportionally adjust by days stayed in this month (for members who moved in mid-month)
-          </label>
+          <div className="flex gap-4 text-sm text-gray-600">
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input type="radio" name="splitMethod" checked={splitMethod === "equal"}
+                onChange={() => setSplitMethod("equal")} />
+              Equal Split
+            </label>
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input type="radio" name="splitMethod" checked={splitMethod === "prorate"}
+                onChange={() => setSplitMethod("prorate")} />
+              Prorate by Days (billing period)
+            </label>
+          </div>
         )}
 
         {totalAmount && selectedTenants.length > 0 && (
@@ -168,8 +216,8 @@ const BillFormModal = ({ tenant, onClose, onSaved }) => {
               <div key={s.tenant._id} className="flex justify-between">
                 <span>
                   {s.tenant.fullName}
-                  {prorate && s.present !== undefined && s.present < s.totalDays && (
-                    <span className="text-xs text-amber-600"> ({s.present}/{s.totalDays} days)</span>
+                  {splitMethod === "prorate" && s.days !== undefined && (
+                    <span className="text-xs text-amber-600"> ({s.days}/{periodDays} days)</span>
                   )}
                 </span>
                 <span className="font-medium">€{s.shareAmount}</span>

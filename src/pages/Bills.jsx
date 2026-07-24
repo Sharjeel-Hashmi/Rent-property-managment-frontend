@@ -3,6 +3,8 @@ import { MdReceiptLong, MdCheckCircle, MdAttachFile, MdDelete } from "react-icon
 import API from "../api/axios.js";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 
+const fmtDate = (d) => (d ? new Date(d).toLocaleDateString("en-GB") : "-"); // dd/mm/yyyy
+
 const Bills = () => {
   const [bills, setBills] = useState([]);
   const [properties, setProperties] = useState([]);
@@ -24,9 +26,10 @@ const Bills = () => {
     fetchBills();
   }, [propertyFilter]);
 
-  const markPaid = async (id) => {
-    await API.put(`/bills/${id}/pay`);
-    fetchBills();
+  // Toggle just one tenant's share within a bill
+  const toggleTenantPaid = async (billId, tenantId) => {
+    const { data } = await API.put(`/bills/${billId}/pay/${tenantId}`);
+    setBills((prev) => prev.map((b) => (b._id === billId ? data : b)));
   };
 
   const handleDelete = async () => {
@@ -56,45 +59,64 @@ const Bills = () => {
             <tr>
               <th className="px-4 py-3">Type</th>
               <th className="px-4 py-3">Property</th>
-              <th className="px-4 py-3">Tenant(s)</th>
+              <th className="px-4 py-3">Billing Period</th>
+              <th className="px-4 py-3">Tenant(s) — click to toggle paid</th>
               <th className="px-4 py-3">Amount</th>
-              <th className="px-4 py-3">Date</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3"></th>
             </tr>
           </thead>
           <tbody>
-            {bills.map((b) => (
-              <tr key={b._id} className="border-t border-sand-100">
-                <td className="px-4 py-3">{b.billType}</td>
-                <td className="px-4 py-3">{b.property?.name}</td>
-                <td className="px-4 py-3">{b.tenants.map((t) => t.tenant?.fullName).join(", ")}</td>
-                <td className="px-4 py-3">€{b.totalAmount}</td>
-                <td className="px-4 py-3">{new Date(b.billDate).toLocaleDateString()}</td>
-                <td className="px-4 py-3">
-                  {b.isPaid ? (
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-brand-50 text-brand-700 flex items-center gap-1 w-fit">
-                      <MdCheckCircle size={12} /> Paid
+            {bills.map((b) => {
+              const paidCount = b.tenants.filter((t) => t.isPaid).length;
+              const allPaid = paidCount === b.tenants.length && b.tenants.length > 0;
+              return (
+                <tr key={b._id} className="border-t border-sand-100 align-top">
+                  <td className="px-4 py-3">{b.billType}</td>
+                  <td className="px-4 py-3">{b.property?.name}</td>
+                  <td className="px-4 py-3 text-xs text-gray-500">
+                    {b.billPeriodStart && b.billPeriodEnd
+                      ? `${fmtDate(b.billPeriodStart)} - ${fmtDate(b.billPeriodEnd)}`
+                      : fmtDate(b.billDate)}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap gap-1.5">
+                      {b.tenants.map((t) => (
+                        <button
+                          key={t.tenant?._id}
+                          onClick={() => toggleTenantPaid(b._id, t.tenant?._id)}
+                          title={`€${t.shareAmount} — click to mark ${t.isPaid ? "unpaid" : "paid"}`}
+                          className={`text-xs px-2 py-0.5 rounded-full flex items-center gap-1 font-medium ${
+                            t.isPaid ? "bg-brand-50 text-brand-700 hover:bg-brand-100" : "bg-red-50 text-red-600 hover:bg-red-100"
+                          }`}
+                        >
+                          {t.isPaid && <MdCheckCircle size={11} />} {t.tenant?.fullName}
+                        </button>
+                      ))}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">€{b.totalAmount}</td>
+                  <td className="px-4 py-3">
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${
+                      allPaid ? "bg-brand-50 text-brand-700" : "bg-amber-50 text-amber-700"
+                    }`}>
+                      {paidCount}/{b.tenants.length} Paid
                     </span>
-                  ) : (
-                    <button onClick={() => markPaid(b._id)} className="text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-600 hover:bg-red-100">
-                      Mark Paid
+                  </td>
+                  <td className="px-4 py-3 flex items-center gap-3">
+                    {b.attachment?.data && (
+                      <a href={`data:${b.attachment.contentType};base64,${b.attachment.data}`}
+                        download={b.attachment.fileName} className="text-brand-600 hover:underline">
+                        <MdAttachFile size={16} />
+                      </a>
+                    )}
+                    <button onClick={() => setDeleteId(b._id)} className="text-gray-400 hover:text-red-500">
+                      <MdDelete size={16} />
                     </button>
-                  )}
-                </td>
-                <td className="px-4 py-3 flex items-center gap-3">
-                  {b.attachment?.data && (
-                    <a href={`data:${b.attachment.contentType};base64,${b.attachment.data}`}
-                      download={b.attachment.fileName} className="text-brand-600 hover:underline">
-                      <MdAttachFile size={16} />
-                    </a>
-                  )}
-                  <button onClick={() => setDeleteId(b._id)} className="text-gray-400 hover:text-red-500">
-                    <MdDelete size={16} />
-                  </button>
-                </td>
-              </tr>
-            ))}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
         {bills.length === 0 && <p className="text-sm text-gray-500 p-4">No bills found.</p>}

@@ -68,11 +68,14 @@ const Tenants = () => {
                 <td className="px-4 py-3">{t.rooms.join(", ") || "-"}</td>
                 <td className="px-4 py-3">€{t.rentAmount}/{t.rentFrequency}</td>
                 <td className="px-4 py-3">
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${
-                    t.depositPaid ? "bg-brand-50 text-brand-700" : "bg-red-50 text-red-600"
-                  }`}>
-                    {t.depositPaid ? "Paid" : "Not Paid"}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${
+                      t.depositPaid ? "bg-brand-50 text-brand-700" : "bg-red-50 text-red-600"
+                    }`}>
+                      {t.depositPaid ? "Paid" : "Not Paid"}
+                    </span>
+                    <span className="text-xs text-gray-500">€{t.depositAmount || 0}</span>
+                  </div>
                 </td>
                 <td className="px-4 py-3">
                   <span className={`text-xs px-2 py-0.5 rounded-full ${

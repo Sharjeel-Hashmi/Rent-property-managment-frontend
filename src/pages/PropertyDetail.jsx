@@ -1,20 +1,28 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { MdAdd, MdEdit, MdDelete, MdMeetingRoom, MdPerson } from "react-icons/md";
+import {
+  MdAdd, MdEdit, MdDelete, MdMeetingRoom, MdPerson,
+  MdReceiptLong, MdCheckCircle, MdAttachFile,
+} from "react-icons/md";
 import API from "../api/axios.js";
 import Modal from "../components/Modal.jsx";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
+import BillFormModal from "../components/BillFormModal.jsx";
 
 const emptyRoom = { roomNumber: "", capacity: 1, notes: "" };
+const fmtDate = (d) => (d ? new Date(d).toLocaleDateString("en-GB") : "-"); // dd/mm/yyyy
 
 const PropertyDetail = () => {
   const { id } = useParams();
   const [property, setProperty] = useState(null);
   const [tenants, setTenants] = useState([]);
+  const [bills, setBills] = useState([]);
   const [showRoomModal, setShowRoomModal] = useState(false);
   const [editingRoom, setEditingRoom] = useState(null);
   const [roomForm, setRoomForm] = useState(emptyRoom);
   const [deleteRoomId, setDeleteRoomId] = useState(null);
+  const [showBillModal, setShowBillModal] = useState(false);
+  const [deleteBillId, setDeleteBillId] = useState(null);
 
   const fetchData = async () => {
     const { data } = await API.get(`/properties/${id}`);
@@ -22,8 +30,14 @@ const PropertyDetail = () => {
     setTenants(data.tenants);
   };
 
+  const fetchBills = async () => {
+    const { data } = await API.get("/bills", { params: { property: id } });
+    setBills(data);
+  };
+
   useEffect(() => {
     fetchData();
+    fetchBills();
   }, [id]);
 
   const openAddRoom = () => {
@@ -53,6 +67,17 @@ const PropertyDetail = () => {
     await API.delete(`/properties/${id}/rooms/${deleteRoomId}`);
     setDeleteRoomId(null);
     fetchData();
+  };
+
+  const toggleTenantPaid = async (billId, tenantId) => {
+    const { data } = await API.put(`/bills/${billId}/pay/${tenantId}`);
+    setBills((prev) => prev.map((b) => (b._id === billId ? data : b)));
+  };
+
+  const handleDeleteBill = async () => {
+    await API.delete(`/bills/${deleteBillId}`);
+    setDeleteBillId(null);
+    fetchBills();
   };
 
   if (!property) return <p className="text-gray-500">Loading...</p>;
@@ -105,7 +130,7 @@ const PropertyDetail = () => {
       </div>
 
       {/* Tenants Section */}
-      <div className="bg-white rounded-xl shadow-sm border border-sand-200 p-5">
+      <div className="bg-white rounded-xl shadow-sm border border-sand-200 p-5 mb-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-semibold text-gray-700 flex items-center gap-2">
             <MdPerson /> Rent Members
@@ -143,6 +168,68 @@ const PropertyDetail = () => {
         </div>
       </div>
 
+      {/* Bills Section */}
+      <div className="bg-white rounded-xl shadow-sm border border-sand-200 p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold text-gray-700 flex items-center gap-2">
+            <MdReceiptLong /> Bills
+          </h3>
+          <button
+            onClick={() => setShowBillModal(true)}
+            className="flex items-center gap-1 text-sm text-brand-600 hover:text-brand-700"
+          >
+            <MdAdd size={16} /> Add Bill
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          {bills.map((b) => {
+            const paidCount = b.tenants.filter((t) => t.isPaid).length;
+            return (
+              <div key={b._id} className="border border-sand-200 rounded-lg p-3 text-sm">
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <p className="font-medium text-gray-800">{b.billType} — €{b.totalAmount}</p>
+                    <p className="text-xs text-gray-500">
+                      {b.billPeriodStart && b.billPeriodEnd
+                        ? `${fmtDate(b.billPeriodStart)} - ${fmtDate(b.billPeriodEnd)}`
+                        : fmtDate(b.billDate)}
+                      {" · "}{paidCount}/{b.tenants.length} Paid
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {b.attachment?.data && (
+                      <a href={`data:${b.attachment.contentType};base64,${b.attachment.data}`}
+                        download={b.attachment.fileName} className="text-brand-600 hover:underline flex items-center gap-1">
+                        <MdAttachFile size={16} />
+                      </a>
+                    )}
+                    <button onClick={() => setDeleteBillId(b._id)} className="text-gray-400 hover:text-red-500">
+                      <MdDelete size={16} />
+                    </button>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {b.tenants.map((t) => (
+                    <button
+                      key={t.tenant?._id}
+                      onClick={() => toggleTenantPaid(b._id, t.tenant?._id)}
+                      title={`€${t.shareAmount} — click to mark ${t.isPaid ? "unpaid" : "paid"}`}
+                      className={`text-xs px-2 py-0.5 rounded-full flex items-center gap-1 font-medium ${
+                        t.isPaid ? "bg-brand-50 text-brand-700 hover:bg-brand-100" : "bg-red-50 text-red-600 hover:bg-red-100"
+                      }`}
+                    >
+                      {t.isPaid && <MdCheckCircle size={11} />} {t.tenant?.fullName}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+          {bills.length === 0 && <p className="text-sm text-gray-500">No bills recorded yet for this property.</p>}
+        </div>
+      </div>
+
       {showRoomModal && (
         <Modal title={editingRoom ? "Edit Room" : "Add Room"} onClose={() => setShowRoomModal(false)}>
           <form onSubmit={handleRoomSubmit} className="flex flex-col gap-3">
@@ -167,6 +254,22 @@ const PropertyDetail = () => {
           message="Delete this room?"
           onConfirm={handleDeleteRoom}
           onCancel={() => setDeleteRoomId(null)}
+        />
+      )}
+
+      {showBillModal && (
+        <BillFormModal
+          propertyId={id}
+          onClose={() => setShowBillModal(false)}
+          onSaved={() => { setShowBillModal(false); fetchBills(); }}
+        />
+      )}
+
+      {deleteBillId && (
+        <ConfirmDialog
+          message="Delete this bill?"
+          onConfirm={handleDeleteBill}
+          onCancel={() => setDeleteBillId(null)}
         />
       )}
     </div>

@@ -54,7 +54,7 @@ const TenantDetail = () => {
   };
 
   const toggleBillPaid = async (billId) => {
-    const { data } = await API.put(`/bills/${billId}/pay`);
+    const { data } = await API.put(`/bills/${billId}/pay/${id}`);
     setBills((prev) => prev.map((b) => (b._id === billId ? data : b)));
   };
 
@@ -265,8 +265,11 @@ const TenantDetail = () => {
                 <div>
                   <p className="font-medium text-gray-800">{b.billType} — €{share?.shareAmount ?? b.totalAmount}</p>
                   <p className="text-xs text-gray-500">
-                    {fmtDate(b.billDate)}
+                    {b.billPeriodStart && b.billPeriodEnd
+                      ? `${fmtDate(b.billPeriodStart)} - ${fmtDate(b.billPeriodEnd)}`
+                      : fmtDate(b.billDate)}
                     {b.tenants.length > 1 && ` · split among ${b.tenants.length}`}
+                    {share?.isPaid && share?.paidDate && ` · Paid on ${fmtDate(share.paidDate)}`}
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -279,10 +282,10 @@ const TenantDetail = () => {
                   <button
                     onClick={() => toggleBillPaid(b._id)}
                     className={`text-xs px-3 py-1.5 rounded-full flex items-center gap-1 font-medium ${
-                      b.isPaid ? "bg-brand-50 text-brand-700 hover:bg-brand-100" : "bg-red-50 text-red-600 hover:bg-red-100"
+                      share?.isPaid ? "bg-brand-50 text-brand-700 hover:bg-brand-100" : "bg-red-50 text-red-600 hover:bg-red-100"
                     }`}
                   >
-                    {b.isPaid && <MdCheckCircle size={12} />} {b.isPaid ? "Paid" : "Mark as Paid"}
+                    {share?.isPaid && <MdCheckCircle size={12} />} {share?.isPaid ? "Paid" : "Mark as Paid"}
                   </button>
                 </div>
               </div>
@@ -359,7 +362,8 @@ const TenantDetail = () => {
 
       {showBillModal && (
         <BillFormModal
-          tenant={tenant}
+          propertyId={tenant.property?._id || tenant.property}
+          defaultTenantId={tenant._id}
           onClose={() => setShowBillModal(false)}
           onSaved={() => { setShowBillModal(false); fetchData(); }}
         />
