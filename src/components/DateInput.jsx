@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MdCalendarToday } from "react-icons/md";
 
-// A simple dd/mm/yyyy text date input.
+// A dd/mm/yyyy text date input with a working calendar picker button.
 // value: ISO date string "YYYY-MM-DD" (or full ISO), onChange receives "YYYY-MM-DD"
 const isoToDisplay = (iso) => {
   if (!iso) return "";
@@ -22,6 +22,7 @@ const displayToIso = (display) => {
 
 const DateInput = ({ value, onChange, required, className = "" }) => {
   const [text, setText] = useState(isoToDisplay(value));
+  const hiddenDateRef = useRef(null);
 
   useEffect(() => {
     setText(isoToDisplay(value));
@@ -41,6 +42,25 @@ const DateInput = ({ value, onChange, required, className = "" }) => {
     if (iso) onChange(iso);
   };
 
+  const openPicker = () => {
+    const el = hiddenDateRef.current;
+    if (!el) return;
+    if (typeof el.showPicker === "function") {
+      el.showPicker();
+    } else {
+      el.click();
+      el.focus();
+    }
+  };
+
+  const handleHiddenDateChange = (e) => {
+    const iso = e.target.value; // already YYYY-MM-DD
+    if (iso) {
+      setText(isoToDisplay(iso));
+      onChange(iso);
+    }
+  };
+
   return (
     <div className="relative">
       <input
@@ -52,7 +72,23 @@ const DateInput = ({ value, onChange, required, className = "" }) => {
         maxLength={10}
         className={`border border-sand-200 rounded-lg px-3 py-2 text-sm w-full pr-9 ${className}`}
       />
-      <MdCalendarToday className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+      <button
+        type="button"
+        onClick={openPicker}
+        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-brand-600"
+        tabIndex={-1}
+      >
+        <MdCalendarToday size={16} />
+      </button>
+      {/* Hidden native date input purely used to open a real calendar picker */}
+      <input
+        ref={hiddenDateRef}
+        type="date"
+        value={value ? value.substring(0, 10) : ""}
+        onChange={handleHiddenDateChange}
+        className="absolute inset-0 w-0 h-0 opacity-0 pointer-events-none"
+        tabIndex={-1}
+      />
     </div>
   );
 };
