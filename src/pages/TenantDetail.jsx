@@ -9,6 +9,7 @@ import Modal from "../components/Modal.jsx";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import BillFormModal from "../components/BillFormModal.jsx";
 import DateInput from "../components/DateInput.jsx";
+import { FaArrowLeft } from "react-icons/fa";
 
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString("en-GB") : "-"); // dd/mm/yyyy
 
@@ -92,6 +93,15 @@ const TenantDetail = () => {
 
   return (
     <div className="max-w-3xl">
+      {/* back button */}
+      <div className="mb-4">
+        <button
+          onClick={() => navigate("/properties/" + (tenant.property?._id || tenant.property))}
+          className="flex items-center gap-1 cursor-pointer text-brand-600 hover:text-brand-700 text-sm"
+        >
+          <FaArrowLeft /> Back to Property Details
+        </button>
+      </div>
       <div className="flex items-start justify-between mb-6 flex-wrap gap-3">
         <div>
           <h2 className="text-xl font-bold text-gray-800">{tenant.fullName}</h2>
