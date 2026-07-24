@@ -5,11 +5,13 @@ import {
   MdPeopleAlt,
   MdReceiptLong,
   MdHomeWork,
+  MdPayments,
 } from "react-icons/md";
 
 const links = [
   { to: "/", label: "Dashboard", icon: <MdSpaceDashboard size={20} />, end: true },
   { to: "/properties", label: "Properties", icon: <MdApartment size={20} /> },
+  { to: "/property-expenses", label: "Property Expense", icon: <MdPayments size={20} /> },
   { to: "/tenants", label: "Rent Members", icon: <MdPeopleAlt size={20} /> },
   { to: "/bills", label: "Bills", icon: <MdReceiptLong size={20} /> },
 ];

@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { MdSave, MdUploadFile } from "react-icons/md";
 import API from "../api/axios.js";
 import { fileToBase64 } from "../utils/fileToBase64.js";
+import DateInput from "../components/DateInput.jsx";
 
 const emptyForm = {
   fullName: "",
@@ -23,6 +24,7 @@ const emptyForm = {
   rentAmount: "",
   rentFrequency: "monthly",
   depositAmount: "",
+  depositPaid: false,
   moveInDate: "",
   notes: "",
 };
@@ -137,9 +139,7 @@ const TenantForm = () => {
             <input type="email" placeholder="Email" value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
               className="border border-sand-200 rounded-lg px-3 py-2 text-sm" />
-            <input type="date" placeholder="Date of Birth" value={form.dob}
-              onChange={(e) => setForm({ ...form, dob: e.target.value })}
-              className="border border-sand-200 rounded-lg px-3 py-2 text-sm" />
+            <DateInput value={form.dob} onChange={(iso) => setForm({ ...form, dob: iso })} />
             <input placeholder="Nationality" value={form.nationality}
               onChange={(e) => setForm({ ...form, nationality: e.target.value })}
               className="border border-sand-200 rounded-lg px-3 py-2 text-sm" />
@@ -255,7 +255,7 @@ const TenantForm = () => {
         <section>
           <h3 className="font-semibold text-brand-700 mb-3">Rent & Deposit</h3>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <input required type="number" min="0" placeholder="Rent Amount (€)" value={form.rentAmount}
+            <input required type="number" step="0.01" min="0" placeholder="Rent Amount (€)" value={form.rentAmount}
               onChange={(e) => setForm({ ...form, rentAmount: e.target.value })}
               className="border border-sand-200 rounded-lg px-3 py-2 text-sm" />
             <select value={form.rentFrequency}
@@ -264,13 +264,19 @@ const TenantForm = () => {
               <option value="monthly">Monthly</option>
               <option value="weekly">Weekly</option>
             </select>
-            <input type="number" min="0" placeholder="Deposit / Advance (€)" value={form.depositAmount}
+            <input type="number" step="0.01" min="0" placeholder="Deposit / Advance (€)" value={form.depositAmount}
               onChange={(e) => setForm({ ...form, depositAmount: e.target.value })}
               className="border border-sand-200 rounded-lg px-3 py-2 text-sm" />
           </div>
-          <input required type="date" value={form.moveInDate}
-            onChange={(e) => setForm({ ...form, moveInDate: e.target.value })}
-            className="border border-sand-200 rounded-lg px-3 py-2 text-sm w-full mt-3" />
+          <label className="flex items-center gap-2 text-sm text-gray-600 mt-3">
+            <input type="checkbox" checked={form.depositPaid}
+              onChange={(e) => setForm({ ...form, depositPaid: e.target.checked })} />
+            Deposit has been paid by this member
+          </label>
+          <div className="mt-3">
+            <label className="text-xs text-gray-500">Move-in Date</label>
+            <DateInput required value={form.moveInDate} onChange={(iso) => setForm({ ...form, moveInDate: iso })} />
+          </div>
         </section>
 
         <textarea placeholder="Notes (optional)" value={form.notes}

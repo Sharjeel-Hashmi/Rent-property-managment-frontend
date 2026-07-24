@@ -2,24 +2,24 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import {
   MdEdit, MdDelete, MdReceiptLong, MdAdd, MdWarningAmber,
-  MdCheckCircle, MdLogout, MdAttachFile, MdHome,
+  MdCheckCircle, MdLogout, MdAttachFile, MdHome, MdHistory,
 } from "react-icons/md";
 import API from "../api/axios.js";
 import Modal from "../components/Modal.jsx";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import BillFormModal from "../components/BillFormModal.jsx";
-import MonthSelector from "../components/MonthSelector.jsx";
+import DateInput from "../components/DateInput.jsx";
 
-const getCurrentMonth = () => {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-};
+const fmtDate = (d) => (d ? new Date(d).toLocaleDateString("en-GB") : "-"); // dd/mm/yyyy
 
 const TenantDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [tenant, setTenant] = useState(null);
   const [bills, setBills] = useState([]);
+  const [currentRentCycle, setCurrentRentCycle] = useState(null);
+  const [rentHistory, setRentHistory] = useState([]);
+
   const [showNoticeModal, setShowNoticeModal] = useState(false);
   const [showMoveOutModal, setShowMoveOutModal] = useState(false);
   const [showBillModal, setShowBillModal] = useState(false);
@@ -27,10 +27,7 @@ const TenantDetail = () => {
 
   const [noticeForm, setNoticeForm] = useState({ noticeGivenDate: "", plannedMoveOutDate: "" });
   const [moveOutForm, setMoveOutForm] = useState({ moveOutDate: "", deductionAmount: "", deductionNote: "" });
-
-  const [rentMonth, setRentMonth] = useState(getCurrentMonth());
-  const [rentPayment, setRentPayment] = useState(null);
-  const [rentLoading, setRentLoading] = useState(false);
+  const [depositSummary, setDepositSummary] = useState(null);
 
   const fetchData = async () => {
     const { data } = await API.get(`/tenants/${id}`);
@@ -39,27 +36,21 @@ const TenantDetail = () => {
     setBills(billsRes.data);
   };
 
-  const fetchRentPayment = async () => {
-    setRentLoading(true);
-    try {
-      const { data } = await API.get("/rent-payments", { params: { tenant: id, month: rentMonth } });
-      setRentPayment(data);
-    } finally {
-      setRentLoading(false);
-    }
+  const fetchRent = async () => {
+    const { data } = await API.get(`/rent-payments/current/${id}`);
+    setCurrentRentCycle(data);
+    const historyRes = await API.get(`/rent-payments/history/${id}`);
+    setRentHistory(historyRes.data);
   };
 
   useEffect(() => {
     fetchData();
+    fetchRent();
   }, [id]);
 
-  useEffect(() => {
-    fetchRentPayment();
-  }, [id, rentMonth]);
-
   const toggleRentPaid = async () => {
-    const { data } = await API.put(`/rent-payments/${rentPayment._id}/toggle`);
-    setRentPayment(data);
+    await API.put(`/rent-payments/${currentRentCycle._id}/toggle`);
+    fetchRent();
   };
 
   const toggleBillPaid = async (billId) => {
@@ -72,6 +63,17 @@ const TenantDetail = () => {
     await API.put(`/tenants/${id}/notice`, noticeForm);
     setShowNoticeModal(false);
     fetchData();
+  };
+
+  const openMoveOutModal = async () => {
+    const { data } = await API.get(`/tenants/${id}/deposit-summary`);
+    setDepositSummary(data);
+    setMoveOutForm({
+      moveOutDate: "",
+      deductionAmount: data.shortfallPenalty || "",
+      deductionNote: "",
+    });
+    setShowMoveOutModal(true);
   };
 
   const handleMoveOut = async (e) => {
@@ -96,12 +98,19 @@ const TenantDetail = () => {
           <p className="text-sm text-gray-500">
             {tenant.property?.name} · Room(s): {tenant.rooms.join(", ") || "Full property"}
           </p>
-          <span className={`inline-block mt-1 text-xs px-2 py-0.5 rounded-full ${
-            tenant.status === "active" ? "bg-brand-50 text-brand-700" :
-            tenant.status === "notice-given" ? "bg-amber-50 text-amber-700" : "bg-gray-100 text-gray-500"
-          }`}>
-            {tenant.status}
-          </span>
+          <div className="flex gap-2 mt-1">
+            <span className={`text-xs px-2 py-0.5 rounded-full ${
+              tenant.status === "active" ? "bg-brand-50 text-brand-700" :
+              tenant.status === "notice-given" ? "bg-amber-50 text-amber-700" : "bg-gray-100 text-gray-500"
+            }`}>
+              {tenant.status}
+            </span>
+            <span className={`text-xs px-2 py-0.5 rounded-full ${
+              tenant.depositPaid ? "bg-brand-50 text-brand-700" : "bg-red-50 text-red-600"
+            }`}>
+              Deposit {tenant.depositPaid ? "Paid" : "Not Paid"}
+            </span>
+          </div>
         </div>
         <div className="flex gap-2">
           <Link to={`/tenants/${id}/edit`} className="flex items-center gap-1 text-sm border border-sand-200 px-3 py-1.5 rounded-lg hover:bg-sand-50">
@@ -121,7 +130,7 @@ const TenantDetail = () => {
           <MdWarningAmber className={tenant.deductionApplicable ? "text-amber-600" : "text-brand-600"} size={22} />
           <div className="text-sm">
             <p className="font-medium text-gray-800">
-              Notice given on {new Date(tenant.noticeGivenDate).toLocaleDateString()}, planned move-out {new Date(tenant.plannedMoveOutDate).toLocaleDateString()}
+              Notice given on {fmtDate(tenant.noticeGivenDate)}, planned move-out {fmtDate(tenant.plannedMoveOutDate)}
             </p>
             <p className="text-gray-600">
               Required notice: {tenant.requiredNoticeWeeks} weeks. Shortfall: {tenant.noticeShortfallDays} day(s).
@@ -135,6 +144,13 @@ const TenantDetail = () => {
         </div>
       )}
 
+      {tenant.status === "moved-out" && tenant.remainingDepositAmount !== undefined && (
+        <div className="rounded-xl p-4 mb-6 bg-sand-100 border border-sand-200 text-sm">
+          <p className="font-medium text-gray-800">Moved out on {fmtDate(tenant.moveOutDate)}</p>
+          <p className="text-gray-600">Final remaining deposit refunded: €{tenant.remainingDepositAmount}</p>
+        </div>
+      )}
+
       {/* Actions */}
       {tenant.status !== "moved-out" && (
         <div className="flex gap-3 mb-6">
@@ -144,7 +160,7 @@ const TenantDetail = () => {
               <MdWarningAmber size={16} /> Give Notice
             </button>
           )}
-          <button onClick={() => setShowMoveOutModal(true)}
+          <button onClick={openMoveOutModal}
             className="flex items-center gap-1 text-sm bg-gray-700 hover:bg-gray-800 text-white px-4 py-2 rounded-lg">
             <MdLogout size={16} /> Finalize Move-Out
           </button>
@@ -161,9 +177,9 @@ const TenantDetail = () => {
           <p><span className="text-gray-400">ID:</span> {tenant.idType} {tenant.idNumber}</p>
           <p><span className="text-gray-400">Nationality:</span> {tenant.nationality || "-"}</p>
           <p><span className="text-gray-400">Emergency Contact:</span> {tenant.emergencyContactName} {tenant.emergencyContactPhone}</p>
-          <p><span className="text-gray-400">Move-in Date:</span> {new Date(tenant.moveInDate).toLocaleDateString()}</p>
+          <p><span className="text-gray-400">Move-in Date:</span> {fmtDate(tenant.moveInDate)}</p>
           <p><span className="text-gray-400">Rent:</span> €{tenant.rentAmount}/{tenant.rentFrequency}</p>
-          <p><span className="text-gray-400">Deposit:</span> €{tenant.depositAmount}</p>
+          <p><span className="text-gray-400">Deposit:</span> €{tenant.depositAmount} ({tenant.depositPaid ? "Paid" : "Not Paid"})</p>
           {tenant.sharingWith?.length > 0 && (
             <p><span className="text-gray-400">Sharing room with:</span> {tenant.sharingWith.map((s) => s.fullName).join(", ")}</p>
           )}
@@ -179,47 +195,63 @@ const TenantDetail = () => {
         )}
       </div>
 
-      {/* Monthly Rent */}
+      {/* Current Rent Due */}
       <div className="bg-white rounded-xl shadow-sm border border-sand-200 p-5 mb-6">
-        <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-          <h3 className="font-semibold text-brand-700 flex items-center gap-2">
-            <MdHome /> Monthly Rent
-          </h3>
-          <MonthSelector value={rentMonth} onChange={setRentMonth} />
-        </div>
-
-        {rentLoading || !rentPayment ? (
-          <p className="text-sm text-gray-500">Loading...</p>
-        ) : (
-          <div className="flex items-center justify-between border border-sand-200 rounded-lg p-4">
+        <h3 className="font-semibold text-brand-700 flex items-center gap-2 mb-4">
+          <MdHome /> Rent
+        </h3>
+        {currentRentCycle && (
+          <div className={`flex items-center justify-between border rounded-lg p-4 ${
+            !currentRentCycle.isPaid && new Date(currentRentCycle.dueDate) < new Date()
+              ? "border-red-200 bg-red-50"
+              : "border-sand-200"
+          }`}>
             <div>
-              <p className="font-medium text-gray-800">Rent — €{rentPayment.amount}</p>
+              <p className="font-medium text-gray-800">Rent — €{currentRentCycle.amount}</p>
               <p className="text-xs text-gray-500">
-                {rentPayment.isPaid && rentPayment.paidDate
-                  ? `Paid on ${new Date(rentPayment.paidDate).toLocaleDateString()}`
-                  : "Not paid yet"}
+                Due date: {fmtDate(currentRentCycle.dueDate)}
+                {currentRentCycle.isPaid && currentRentCycle.paidDate && ` · Paid on ${fmtDate(currentRentCycle.paidDate)}`}
               </p>
             </div>
             <button
               onClick={toggleRentPaid}
               className={`text-xs px-3 py-1.5 rounded-full flex items-center gap-1 font-medium ${
-                rentPayment.isPaid
+                currentRentCycle.isPaid
                   ? "bg-brand-50 text-brand-700 hover:bg-brand-100"
                   : "bg-red-50 text-red-600 hover:bg-red-100"
               }`}
             >
-              {rentPayment.isPaid && <MdCheckCircle size={14} />}
-              {rentPayment.isPaid ? "Paid" : "Mark as Paid"}
+              {currentRentCycle.isPaid && <MdCheckCircle size={14} />}
+              {currentRentCycle.isPaid ? "Paid" : "Mark as Paid"}
             </button>
           </div>
         )}
+
+        {/* Rent History */}
+        <div className="mt-4">
+          <p className="text-xs text-gray-500 flex items-center gap-1 mb-2"><MdHistory size={14} /> Rent History</p>
+          <div className="flex flex-col gap-1 max-h-56 overflow-y-auto">
+            {rentHistory.map((r) => (
+              <div key={r._id} className="flex items-center justify-between text-sm border-t border-sand-100 py-2">
+                <span className="text-gray-600">Due {fmtDate(r.dueDate)}</span>
+                <span className="text-gray-700">€{r.amount}</span>
+                <span className={`text-xs px-2 py-0.5 rounded-full ${
+                  r.isPaid ? "bg-brand-50 text-brand-700" : "bg-red-50 text-red-600"
+                }`}>
+                  {r.isPaid ? `Paid ${fmtDate(r.paidDate)}` : "Unpaid"}
+                </span>
+              </div>
+            ))}
+            {rentHistory.length === 0 && <p className="text-sm text-gray-500">No rent history yet.</p>}
+          </div>
+        </div>
       </div>
 
-      {/* Bills */}
+      {/* Bills History */}
       <div className="bg-white rounded-xl shadow-sm border border-sand-200 p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-semibold text-brand-700 flex items-center gap-2">
-            <MdReceiptLong /> Bills
+            <MdReceiptLong /> Bills History
           </h3>
           <button onClick={() => setShowBillModal(true)} className="flex items-center gap-1 text-sm text-brand-600 hover:text-brand-700">
             <MdAdd size={16} /> Add Bill
@@ -233,7 +265,7 @@ const TenantDetail = () => {
                 <div>
                   <p className="font-medium text-gray-800">{b.billType} — €{share?.shareAmount ?? b.totalAmount}</p>
                   <p className="text-xs text-gray-500">
-                    {new Date(b.billDate).toLocaleDateString()}
+                    {fmtDate(b.billDate)}
                     {b.tenants.length > 1 && ` · split among ${b.tenants.length}`}
                   </p>
                 </div>
@@ -265,15 +297,13 @@ const TenantDetail = () => {
           <form onSubmit={handleGiveNotice} className="flex flex-col gap-3">
             <div>
               <label className="text-sm text-gray-600">Notice Given Date</label>
-              <input required type="date" value={noticeForm.noticeGivenDate}
-                onChange={(e) => setNoticeForm({ ...noticeForm, noticeGivenDate: e.target.value })}
-                className="border border-sand-200 rounded-lg px-3 py-2 text-sm w-full mt-1" />
+              <DateInput required value={noticeForm.noticeGivenDate}
+                onChange={(iso) => setNoticeForm({ ...noticeForm, noticeGivenDate: iso })} />
             </div>
             <div>
               <label className="text-sm text-gray-600">Planned Move-Out Date</label>
-              <input required type="date" value={noticeForm.plannedMoveOutDate}
-                onChange={(e) => setNoticeForm({ ...noticeForm, plannedMoveOutDate: e.target.value })}
-                className="border border-sand-200 rounded-lg px-3 py-2 text-sm w-full mt-1" />
+              <DateInput required value={noticeForm.plannedMoveOutDate}
+                onChange={(iso) => setNoticeForm({ ...noticeForm, plannedMoveOutDate: iso })} />
             </div>
             <p className="text-xs text-gray-500">
               Required notice period is 4 weeks. If the gap between these dates falls more than 15 days short of that, a deduction from the advance payment will be flagged automatically.
@@ -288,17 +318,27 @@ const TenantDetail = () => {
       {showMoveOutModal && (
         <Modal title="Finalize Move-Out" onClose={() => setShowMoveOutModal(false)}>
           <form onSubmit={handleMoveOut} className="flex flex-col gap-3">
+            {depositSummary && (
+              <div className="bg-sand-50 rounded-lg p-3 text-sm mb-1">
+                <p className="flex justify-between"><span>Deposit Paid</span><span>€{depositSummary.depositAmount}</span></p>
+                <p className="flex justify-between text-red-500"><span>Notice Shortfall Penalty</span><span>-€{depositSummary.shortfallPenalty}</span></p>
+                <p className="flex justify-between text-red-500"><span>Unpaid Rent</span><span>-€{depositSummary.unpaidRentTotal}</span></p>
+                <p className="flex justify-between text-red-500"><span>Unpaid Bills</span><span>-€{depositSummary.unpaidBillsTotal}</span></p>
+                <p className="flex justify-between font-semibold border-t border-sand-200 mt-1 pt-1">
+                  <span>Remaining Deposit to Refund</span><span>€{depositSummary.remainingDeposit}</span>
+                </p>
+              </div>
+            )}
             <div>
               <label className="text-sm text-gray-600">Move-Out Date</label>
-              <input required type="date" value={moveOutForm.moveOutDate}
-                onChange={(e) => setMoveOutForm({ ...moveOutForm, moveOutDate: e.target.value })}
-                className="border border-sand-200 rounded-lg px-3 py-2 text-sm w-full mt-1" />
+              <DateInput required value={moveOutForm.moveOutDate}
+                onChange={(iso) => setMoveOutForm({ ...moveOutForm, moveOutDate: iso })} />
             </div>
             {tenant.deductionApplicable && (
               <>
                 <div>
-                  <label className="text-sm text-gray-600">Deduction Amount (€)</label>
-                  <input type="number" min="0" value={moveOutForm.deductionAmount}
+                  <label className="text-sm text-gray-600">Shortfall Deduction Amount (€)</label>
+                  <input type="number" step="0.01" min="0" value={moveOutForm.deductionAmount}
                     onChange={(e) => setMoveOutForm({ ...moveOutForm, deductionAmount: e.target.value })}
                     className="border border-sand-200 rounded-lg px-3 py-2 text-sm w-full mt-1" />
                 </div>
