@@ -3,13 +3,13 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import {
   MdEdit, MdDelete, MdReceiptLong, MdAdd, MdWarningAmber,
   MdCheckCircle, MdLogout, MdAttachFile, MdHome, MdHistory,
+  MdArrowBack,
 } from "react-icons/md";
 import API from "../api/axios.js";
 import Modal from "../components/Modal.jsx";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import BillFormModal from "../components/BillFormModal.jsx";
 import DateInput from "../components/DateInput.jsx";
-import { FaArrowLeft } from "react-icons/fa";
 
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString("en-GB") : "-"); // dd/mm/yyyy
 
@@ -38,10 +38,14 @@ const TenantDetail = () => {
   };
 
   const fetchRent = async () => {
-    const { data } = await API.get(`/rent-payments/current/${id}`);
-    setCurrentRentCycle(data);
-    const historyRes = await API.get(`/rent-payments/history/${id}`);
-    setRentHistory(historyRes.data);
+    try {
+      const { data } = await API.get(`/rent-payments/current/${id}`);
+      setCurrentRentCycle(data);
+      const historyRes = await API.get(`/rent-payments/history/${id}`);
+      setRentHistory(historyRes.data);
+    } catch (err) {
+      console.error("Could not load rent info:", err);
+    }
   };
 
   useEffect(() => {
@@ -49,9 +53,18 @@ const TenantDetail = () => {
     fetchRent();
   }, [id]);
 
-  const toggleRentPaid = async () => {
-    await API.put(`/rent-payments/${currentRentCycle._id}/toggle`);
-    fetchRent();
+  // Toggles any single rent cycle's paid status by id — used for both the
+  // current-cycle card and individual Rent History rows. Only the clicked
+  // record changes; other months are left untouched.
+  const toggleRentPaidById = async (rentId) => {
+    try {
+      const { data } = await API.put(`/rent-payments/${rentId}/toggle`);
+      if (currentRentCycle?._id === data._id) setCurrentRentCycle(data);
+      await fetchRent();
+    } catch (err) {
+      console.error("Rent toggle failed:", err);
+      alert(err.response?.data?.message || "Rent status update nahi ho saka. Dobara try karein.");
+    }
   };
 
   const toggleBillPaid = async (billId) => {
@@ -94,12 +107,12 @@ const TenantDetail = () => {
   return (
     <div className="max-w-3xl">
       {/* back button */}
-      <div className="mb-4">
+      <div className="mb-6">
         <button
-          onClick={() => navigate("/properties/" + (tenant.property?._id || tenant.property))}
+          onClick={() => navigate(-1)}
           className="flex items-center gap-1 cursor-pointer text-brand-600 hover:text-brand-700 text-sm"
         >
-          <FaArrowLeft /> Back to Property Details
+          <MdArrowBack /> Back to Tenant List
         </button>
       </div>
       <div className="flex items-start justify-between mb-6 flex-wrap gap-3">
@@ -224,7 +237,7 @@ const TenantDetail = () => {
               </p>
             </div>
             <button
-              onClick={toggleRentPaid}
+              onClick={() => toggleRentPaidById(currentRentCycle._id)}
               className={`text-xs px-3 py-1.5 rounded-full flex items-center gap-1 font-medium ${
                 currentRentCycle.isPaid
                   ? "bg-brand-50 text-brand-700 hover:bg-brand-100"
@@ -240,19 +253,38 @@ const TenantDetail = () => {
         {/* Rent History */}
         <div className="mt-4">
           <p className="text-xs text-gray-500 flex items-center gap-1 mb-2"><MdHistory size={14} /> Rent History</p>
-          <div className="flex flex-col gap-1 max-h-56 overflow-y-auto">
-            {rentHistory.map((r) => (
-              <div key={r._id} className="flex items-center justify-between text-sm border-t border-sand-100 py-2">
-                <span className="text-gray-600">Due {fmtDate(r.dueDate)}</span>
-                <span className="text-gray-700">€{r.amount}</span>
-                <span className={`text-xs px-2 py-0.5 rounded-full ${
-                  r.isPaid ? "bg-brand-50 text-brand-700" : "bg-red-50 text-red-600"
-                }`}>
-                  {r.isPaid ? `Paid ${fmtDate(r.paidDate)}` : "Unpaid"}
-                </span>
-              </div>
-            ))}
-            {rentHistory.length === 0 && <p className="text-sm text-gray-500">No rent history yet.</p>}
+          <div className="max-h-64 overflow-y-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-xs text-gray-400 text-left">
+                  <th className="py-1 font-normal">Due Date</th>
+                  <th className="py-1 font-normal">Paid Date</th>
+                  <th className="py-1 font-normal">Amount</th>
+                  <th className="py-1 font-normal">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rentHistory.map((r) => (
+                  <tr key={r._id} className="border-t border-sand-100">
+                    <td className="py-2 text-gray-600">{fmtDate(r.dueDate)}</td>
+                    <td className="py-2 text-gray-600">{r.isPaid ? fmtDate(r.paidDate) : "-"}</td>
+                    <td className="py-2 text-gray-700">€{r.amount}</td>
+                    <td className="py-2">
+                      <button
+                        onClick={() => toggleRentPaidById(r._id)}
+                        title={r.isPaid ? "Click to mark this month unpaid" : "Click to mark this month paid"}
+                        className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          r.isPaid ? "bg-brand-50 text-brand-700 hover:bg-brand-100" : "bg-red-50 text-red-600 hover:bg-red-100"
+                        }`}
+                      >
+                        {r.isPaid ? "Paid" : "Unpaid"}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {rentHistory.length === 0 && <p className="text-sm text-gray-500 mt-2">No rent history yet.</p>}
           </div>
         </div>
       </div>

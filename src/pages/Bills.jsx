@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { MdReceiptLong, MdCheckCircle, MdAttachFile, MdDelete } from "react-icons/md";
+import { MdReceiptLong, MdCheckCircle, MdAttachFile, MdDelete, MdEdit } from "react-icons/md";
 import API from "../api/axios.js";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
+import BillFormModal from "../components/BillFormModal.jsx";
 
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString("en-GB") : "-"); // dd/mm/yyyy
 
@@ -10,6 +11,7 @@ const Bills = () => {
   const [properties, setProperties] = useState([]);
   const [propertyFilter, setPropertyFilter] = useState("");
   const [deleteId, setDeleteId] = useState(null);
+  const [editingBill, setEditingBill] = useState(null);
 
   const fetchBills = async () => {
     const { data } = await API.get("/bills", {
@@ -110,6 +112,9 @@ const Bills = () => {
                         <MdAttachFile size={16} />
                       </a>
                     )}
+                    <button onClick={() => setEditingBill(b)} className="text-gray-400 hover:text-brand-600">
+                      <MdEdit size={16} />
+                    </button>
                     <button onClick={() => setDeleteId(b._id)} className="text-gray-400 hover:text-red-500">
                       <MdDelete size={16} />
                     </button>
@@ -124,6 +129,14 @@ const Bills = () => {
 
       {deleteId && (
         <ConfirmDialog message="Delete this bill?" onConfirm={handleDelete} onCancel={() => setDeleteId(null)} />
+      )}
+
+      {editingBill && (
+        <BillFormModal
+          bill={editingBill}
+          onClose={() => setEditingBill(null)}
+          onSaved={() => { setEditingBill(null); fetchBills(); }}
+        />
       )}
     </div>
   );

@@ -23,6 +23,7 @@ const PropertyDetail = () => {
   const [roomForm, setRoomForm] = useState(emptyRoom);
   const [deleteRoomId, setDeleteRoomId] = useState(null);
   const [showBillModal, setShowBillModal] = useState(false);
+  const [editingBill, setEditingBill] = useState(null);
   const [deleteBillId, setDeleteBillId] = useState(null);
   const navigate = useNavigate();
 
@@ -86,13 +87,13 @@ const PropertyDetail = () => {
 
   return (
     <div>
-{/* Back Button */}
-      <div className="mb-4">
+      {/* back button */}
+      <div className="mb-6">
         <button
-          onClick={() => navigate("/properties")}
+          onClick={() => navigate(-1)}
           className="flex items-center gap-1 cursor-pointer text-brand-600 hover:text-brand-700 text-sm"
         >
-          <FaArrowLeft /> Back to Properties
+          <FaArrowLeft /> Back to Property Details
         </button>
       </div>
 
@@ -216,6 +217,9 @@ const PropertyDetail = () => {
                         <MdAttachFile size={16} />
                       </a>
                     )}
+                    <button onClick={() => setEditingBill(b)} className="text-gray-400 hover:text-brand-600">
+                      <MdEdit size={16} />
+                    </button>
                     <button onClick={() => setDeleteBillId(b._id)} className="text-gray-400 hover:text-red-500">
                       <MdDelete size={16} />
                     </button>
@@ -274,6 +278,14 @@ const PropertyDetail = () => {
           propertyId={id}
           onClose={() => setShowBillModal(false)}
           onSaved={() => { setShowBillModal(false); fetchBills(); }}
+        />
+      )}
+
+      {editingBill && (
+        <BillFormModal
+          bill={editingBill}
+          onClose={() => setEditingBill(null)}
+          onSaved={() => { setEditingBill(null); fetchBills(); }}
         />
       )}
 

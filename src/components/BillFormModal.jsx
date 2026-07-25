@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { MdUploadFile } from "react-icons/md";
+import { MdUploadFile, MdClose, MdAttachFile } from "react-icons/md";
 import API from "../api/axios.js";
 import { fileToBase64 } from "../utils/fileToBase64.js";
 import Modal from "./Modal.jsx";
@@ -29,28 +29,39 @@ const totalDaysInPeriod = (periodStart, periodEnd) => {
   return Math.max(days, 0);
 };
 
-// propertyId: required. defaultTenantId: optional, preselects + auto-picks that tenant's property.
-const BillFormModal = ({ propertyId, defaultTenantId, onClose, onSaved }) => {
-  const [propertyTenants, setPropertyTenants] = useState([]);
-  const [selectedTenants, setSelectedTenants] = useState(defaultTenantId ? [defaultTenantId] : []);
-  const [splitMethod, setSplitMethod] = useState("equal"); // "equal" | "prorate"
+const toDateInputValue = (d) => (d ? String(d).substring(0, 10) : "");
 
-  const [billType, setBillType] = useState("Electricity");
-  const [billPeriodStart, setBillPeriodStart] = useState("");
-  const [billPeriodEnd, setBillPeriodEnd] = useState("");
-  const [totalAmount, setTotalAmount] = useState("");
-  const [billDate, setBillDate] = useState("");
-  const [dueDate, setDueDate] = useState("");
+// propertyId: required for a new bill. defaultTenantId: optional, preselects a tenant.
+// bill: pass an existing bill object to edit it instead of creating a new one.
+const BillFormModal = ({ propertyId, defaultTenantId, bill, onClose, onSaved }) => {
+  const isEdit = Boolean(bill);
+  const resolvedPropertyId = propertyId || bill?.property?._id || bill?.property;
+
+  const [propertyTenants, setPropertyTenants] = useState([]);
+  const [selectedTenants, setSelectedTenants] = useState(
+    isEdit
+      ? bill.tenants.map((t) => t.tenant?._id || t.tenant)
+      : (defaultTenantId ? [defaultTenantId] : [])
+  );
+  const [splitMethod, setSplitMethod] = useState(bill?.splitMethod || "equal");
+
+  const [billType, setBillType] = useState(bill?.billType || "Electricity");
+  const [billPeriodStart, setBillPeriodStart] = useState(toDateInputValue(bill?.billPeriodStart));
+  const [billPeriodEnd, setBillPeriodEnd] = useState(toDateInputValue(bill?.billPeriodEnd));
+  const [totalAmount, setTotalAmount] = useState(bill?.totalAmount ?? "");
+  const [billDate, setBillDate] = useState(toDateInputValue(bill?.billDate));
+  const [dueDate, setDueDate] = useState(toDateInputValue(bill?.dueDate));
   const [file, setFile] = useState(null);
+  const [removeExistingAttachment, setRemoveExistingAttachment] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (!propertyId) return;
-    API.get("/tenants", { params: { property: propertyId } }).then((res) =>
+    if (!resolvedPropertyId) return;
+    API.get("/tenants", { params: { property: resolvedPropertyId } }).then((res) =>
       setPropertyTenants(res.data)
     );
-  }, [propertyId]);
+  }, [resolvedPropertyId]);
 
   const toggleTenant = (id) => {
     setSelectedTenants((prev) =>
@@ -104,7 +115,7 @@ const BillFormModal = ({ propertyId, defaultTenantId, onClose, onSaved }) => {
     setSaving(true);
     try {
       const payload = {
-        property: propertyId,
+        property: resolvedPropertyId,
         billType,
         billPeriodStart: billPeriodStart || undefined,
         billPeriodEnd: billPeriodEnd || undefined,
@@ -112,19 +123,34 @@ const BillFormModal = ({ propertyId, defaultTenantId, onClose, onSaved }) => {
         totalAmount: Number(totalAmount),
         billDate,
         dueDate: dueDate || undefined,
-        tenants: shares.map((s) => ({
-          tenant: s.tenant._id,
-          shareAmount: s.shareAmount,
-          daysPresent: s.days,
-        })),
+        tenants: shares.map((s) => {
+          // Keep an already-paid tenant's paid status/date when editing —
+          // only newly-added members start out unpaid.
+          const old = isEdit
+            ? bill.tenants.find((t) => String(t.tenant?._id || t.tenant) === String(s.tenant._id))
+            : null;
+          return {
+            tenant: s.tenant._id,
+            shareAmount: s.shareAmount,
+            daysPresent: s.days,
+            isPaid: old?.isPaid || false,
+            paidDate: old?.isPaid ? old.paidDate : undefined,
+          };
+        }),
       };
 
       if (file) {
         const base64 = await fileToBase64(file);
         payload.attachment = { data: base64, contentType: file.type, fileName: file.name };
+      } else if (isEdit && removeExistingAttachment) {
+        payload.attachment = null;
       }
 
-      await API.post("/bills", payload);
+      if (isEdit) {
+        await API.put(`/bills/${bill._id}`, payload);
+      } else {
+        await API.post("/bills", payload);
+      }
       onSaved();
     } catch (err) {
       setError(err.response?.data?.message || "Could not save bill");
@@ -133,8 +159,10 @@ const BillFormModal = ({ propertyId, defaultTenantId, onClose, onSaved }) => {
     }
   };
 
+  const hasExistingAttachment = isEdit && bill.attachment?.data && !removeExistingAttachment && !file;
+
   return (
-    <Modal title="Add Bill" onClose={onClose} wide>
+    <Modal title={isEdit ? "Edit Bill" : "Add Bill"} onClose={onClose} wide>
       {error && <p className="text-red-500 text-sm mb-3">{error}</p>}
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <div className="grid grid-cols-2 gap-3">
@@ -226,15 +254,36 @@ const BillFormModal = ({ propertyId, defaultTenantId, onClose, onSaved }) => {
           </div>
         )}
 
-        <label className="flex items-center gap-2 text-sm text-brand-600 cursor-pointer w-fit">
-          <MdUploadFile /> {file ? file.name : "Attach bill (image/PDF)"}
-          <input type="file" accept="image/*,application/pdf" className="hidden"
-            onChange={(e) => setFile(e.target.files[0])} />
-        </label>
+        {hasExistingAttachment && (
+          <div className="flex items-center gap-2 text-sm">
+            <a href={`data:${bill.attachment.contentType};base64,${bill.attachment.data}`}
+              download={bill.attachment.fileName} className="text-brand-600 hover:underline flex items-center gap-1">
+              <MdAttachFile size={16} /> {bill.attachment.fileName || "Current attachment"}
+            </a>
+            <button type="button" onClick={() => setRemoveExistingAttachment(true)}
+              className="text-red-500 hover:text-red-600 text-xs flex items-center gap-0.5">
+              <MdClose size={14} /> Remove
+            </button>
+          </div>
+        )}
+
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 text-sm text-brand-600 cursor-pointer w-fit">
+            <MdUploadFile /> {file ? file.name : hasExistingAttachment ? "Replace attachment" : "Attach bill (image/PDF)"}
+            <input type="file" accept="image/*,application/pdf" className="hidden"
+              onChange={(e) => { setFile(e.target.files[0]); setRemoveExistingAttachment(false); }} />
+          </label>
+          {file && (
+            <button type="button" onClick={() => setFile(null)}
+              className="text-red-500 hover:text-red-600 text-xs flex items-center gap-0.5">
+              <MdClose size={14} /> Remove selected file
+            </button>
+          )}
+        </div>
 
         <button type="submit" disabled={saving}
           className="bg-brand-600 hover:bg-brand-700 text-white rounded-lg py-2 text-sm font-medium mt-2 disabled:opacity-60">
-          {saving ? "Saving..." : "Add Bill"}
+          {saving ? "Saving..." : isEdit ? "Update Bill" : "Add Bill"}
         </button>
       </form>
     </Modal>
