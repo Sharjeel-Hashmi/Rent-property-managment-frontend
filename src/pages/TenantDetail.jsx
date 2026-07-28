@@ -3,7 +3,6 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import {
   MdEdit, MdDelete, MdReceiptLong, MdAdd, MdWarningAmber,
   MdCheckCircle, MdLogout, MdAttachFile, MdHome, MdHistory,
-  MdArrowBack,
 } from "react-icons/md";
 import API from "../api/axios.js";
 import Modal from "../components/Modal.jsx";
@@ -80,21 +79,31 @@ const TenantDetail = () => {
   };
 
   const openMoveOutModal = async () => {
-    const { data } = await API.get(`/tenants/${id}/deposit-summary`);
-    setDepositSummary(data);
-    setMoveOutForm({
-      moveOutDate: "",
-      deductionAmount: data.shortfallPenalty || "",
-      deductionNote: "",
-    });
-    setShowMoveOutModal(true);
+    try {
+      const { data } = await API.get(`/tenants/${id}/deposit-summary`);
+      setDepositSummary(data);
+      setMoveOutForm({
+        moveOutDate: "",
+        deductionAmount: data.shortfallPenalty || "",
+        deductionNote: "",
+      });
+      setShowMoveOutModal(true);
+    } catch (err) {
+      console.error("Could not load deposit summary:", err);
+      alert(err.response?.data?.message || "Deposit summary load nahi ho saka. Dobara try karein.");
+    }
   };
 
   const handleMoveOut = async (e) => {
     e.preventDefault();
-    await API.put(`/tenants/${id}/move-out`, moveOutForm);
-    setShowMoveOutModal(false);
-    fetchData();
+    try {
+      await API.put(`/tenants/${id}/move-out`, moveOutForm);
+      setShowMoveOutModal(false);
+      fetchData();
+    } catch (err) {
+      console.error("Move-out failed:", err);
+      alert(err.response?.data?.message || "Move-out finalize nahi ho saka. Dobara try karein.");
+    }
   };
 
   const handleDelete = async () => {
@@ -106,15 +115,6 @@ const TenantDetail = () => {
 
   return (
     <div className="max-w-3xl">
-      {/* back button */}
-      <div className="mb-6">
-        <button
-          onClick={() => navigate(-1)}
-          className="flex items-center gap-1 cursor-pointer text-brand-600 hover:text-brand-700 text-sm"
-        >
-          <MdArrowBack /> Back to Tenant List
-        </button>
-      </div>
       <div className="flex items-start justify-between mb-6 flex-wrap gap-3">
         <div>
           <h2 className="text-xl font-bold text-gray-800">{tenant.fullName}</h2>
