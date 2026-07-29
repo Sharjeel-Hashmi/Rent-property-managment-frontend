@@ -112,6 +112,16 @@ const TenantDetail = () => {
     navigate("/tenants");
   };
 
+  const handleToggleDeposit = async () => {
+    try {
+      const { data } = await API.put(`/tenants/${id}/toggle-deposit`);
+      setTenant(data);
+    } catch (err) {
+      console.error("Deposit toggle failed:", err);
+      alert(err.response?.data?.message || "Deposit status update nahi ho saka. Dobara try karein.");
+    }
+  };
+
   if (!tenant) return <p className="text-gray-500">Loading...</p>;
 
   return (
@@ -138,11 +148,14 @@ const TenantDetail = () => {
             }`}>
               {tenant.status}
             </span>
-            <span className={`text-xs px-2 py-0.5 rounded-full ${
-              tenant.depositPaid ? "bg-brand-50 text-brand-700" : "bg-red-50 text-red-600"
-            }`}>
+            <button
+              onClick={handleToggleDeposit}
+              title="Click to toggle deposit paid status"
+              className={`text-xs px-2 py-0.5 rounded-full cursor-pointer hover:opacity-80 ${
+                tenant.depositPaid ? "bg-brand-50 text-brand-700" : "bg-red-50 text-red-600"
+              }`}>
               Deposit {tenant.depositPaid ? "Paid" : "Not Paid"}
-            </span>
+            </button>
           </div>
         </div>
         <div className="flex gap-2">
@@ -212,7 +225,12 @@ const TenantDetail = () => {
           <p><span className="text-gray-400">Emergency Contact:</span> {tenant.emergencyContactName} {tenant.emergencyContactPhone}</p>
           <p><span className="text-gray-400">Move-in Date:</span> {fmtDate(tenant.moveInDate)}</p>
           <p><span className="text-gray-400">Rent:</span> €{tenant.rentAmount}/{tenant.rentFrequency}</p>
-          <p><span className="text-gray-400">Deposit:</span> €{tenant.depositAmount} ({tenant.depositPaid ? "Paid" : "Not Paid"})</p>
+          <p>
+            <span className="text-gray-400">Deposit:</span> €{tenant.depositAmount} ({tenant.depositPaid ? "Paid" : "Not Paid"})
+            {tenant.depositPaid && tenant.depositPaidDate && (
+              <span className="text-gray-400"> on {fmtDate(tenant.depositPaidDate)}</span>
+            )}
+          </p>
           {tenant.sharingWith?.length > 0 && (
             <p><span className="text-gray-400">Sharing room with:</span> {tenant.sharingWith.map((s) => s.fullName).join(", ")}</p>
           )}
