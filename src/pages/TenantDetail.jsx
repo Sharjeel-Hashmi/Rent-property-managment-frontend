@@ -9,6 +9,7 @@ import Modal from "../components/Modal.jsx";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import BillFormModal from "../components/BillFormModal.jsx";
 import DateInput from "../components/DateInput.jsx";
+import { FaArrowLeft } from "react-icons/fa";
 
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString("en-GB") : "-"); // dd/mm/yyyy
 
@@ -115,6 +116,15 @@ const TenantDetail = () => {
 
   return (
     <div className="max-w-3xl">
+     {/* back button */}
+           <div className="mb-6">
+             <button
+               onClick={() => navigate(-1)}
+               className="flex items-center gap-1 cursor-pointer text-brand-600 hover:text-brand-700 text-sm"
+             >
+               <FaArrowLeft /> Back to Property Details
+             </button>
+           </div>
       <div className="flex items-start justify-between mb-6 flex-wrap gap-3">
         <div>
           <h2 className="text-xl font-bold text-gray-800">{tenant.fullName}</h2>
@@ -223,7 +233,7 @@ const TenantDetail = () => {
         <h3 className="font-semibold text-brand-700 flex items-center gap-2 mb-4">
           <MdHome /> Rent
         </h3>
-        {currentRentCycle && (
+        {tenant.status !== "moved-out" && currentRentCycle && (
           <div className={`flex items-center justify-between border rounded-lg p-4 ${
             !currentRentCycle.isPaid && new Date(currentRentCycle.dueDate) < new Date()
               ? "border-red-200 bg-red-50"
@@ -250,6 +260,10 @@ const TenantDetail = () => {
           </div>
         )}
 
+        {tenant.status === "moved-out" && (
+          <p className="text-sm text-gray-500 mb-4">Tenant has moved out — no active rent cycle.</p>
+        )}
+
         {/* Rent History */}
         <div className="mt-4">
           <p className="text-xs text-gray-500 flex items-center gap-1 mb-2"><MdHistory size={14} /> Rent History</p>
@@ -270,6 +284,13 @@ const TenantDetail = () => {
                     <td className="py-2 text-gray-600">{r.isPaid ? fmtDate(r.paidDate) : "-"}</td>
                     <td className="py-2 text-gray-700">€{r.amount}</td>
                     <td className="py-2">
+                      {tenant.status === "moved-out" ? (
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          r.isPaid ? "bg-brand-50 text-brand-700" : "bg-red-50 text-red-600"
+                        }`}>
+                          {r.isPaid ? "Paid" : "Unpaid"}
+                        </span>
+                      ) : (
                       <button
                         onClick={() => toggleRentPaidById(r._id)}
                         title={r.isPaid ? "Click to mark this month unpaid" : "Click to mark this month paid"}
@@ -279,6 +300,7 @@ const TenantDetail = () => {
                       >
                         {r.isPaid ? "Paid" : "Unpaid"}
                       </button>
+                      )}
                     </td>
                   </tr>
                 ))}
