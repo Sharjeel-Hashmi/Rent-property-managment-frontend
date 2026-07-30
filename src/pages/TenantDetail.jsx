@@ -95,6 +95,24 @@ const TenantDetail = () => {
     }
   };
 
+  // Re-fetches the deposit summary against the date the admin just typed/picked,
+  // so the shortfall penalty (and whether the deduction fields show at all)
+  // always reflects the ACTUAL move-out date, not the old planned one.
+  const handleMoveOutDateChange = async (iso) => {
+    setMoveOutForm((prev) => ({ ...prev, moveOutDate: iso }));
+    if (!iso) return;
+    try {
+      const { data } = await API.get(`/tenants/${id}/deposit-summary`, { params: { moveOutDate: iso } });
+      setDepositSummary(data);
+      setMoveOutForm((prev) => ({
+        ...prev,
+        deductionAmount: data.deductionApplicable ? prev.deductionAmount || data.shortfallPenalty || "" : "",
+      }));
+    } catch (err) {
+      console.error("Could not refresh deposit summary:", err);
+    }
+  };
+
   const handleMoveOut = async (e) => {
     e.preventDefault();
     try {
@@ -417,10 +435,13 @@ const TenantDetail = () => {
             <div>
               <label className="text-sm text-gray-600">Move-Out Date</label>
               <DateInput required value={moveOutForm.moveOutDate}
-                onChange={(iso) => setMoveOutForm({ ...moveOutForm, moveOutDate: iso })} />
+                onChange={handleMoveOutDateChange} />
             </div>
-            {tenant.deductionApplicable && (
+            {depositSummary?.deductionApplicable && (
               <>
+                <p className="text-xs text-amber-700 -mt-1">
+                  Notice shortfall: {depositSummary.noticeShortfallDays} day(s) more than allowed — deduction applies.
+                </p>
                 <div>
                   <label className="text-sm text-gray-600">Shortfall Deduction Amount (€)</label>
                   <input type="number" step="0.01" min="0" value={moveOutForm.deductionAmount}
